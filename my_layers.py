@@ -55,37 +55,29 @@ class DeepNMFModel(nn.Module):
         return h5
 
 
-class MuReluNet(nn.Module):
-    def __init__(self):
-        super().__init__()
-        self.layer1 = MuReluLayer()
-        self.layer2 = MuReluLayer()
-        self.layer3 = MuReluLayer()
-        self.layer4 = MuReluLayer()
-        self.layer5 = MuReluLayer()
+class MultiDNMFNet(nn.Module):
+    '''
+    Class for a DNMF with variable layers number.
+    Input:
+        -n_layers = number of layers to cinstruct the Net
+        -comp = number of components for factorization
+        -features = original features length for each sample vector(mutational sites)
 
-    def forward(self, h, v):
-        h1 = self.layer1(h, v)
-        h2 = self.layer2(h1, v)
-        h3 = self.layer3(h2, v)
-        h4 = self.layer4(h3, v)
-        h5 = self.layer5(h4, v)
-        return h5
+    '''
+
+    def __init__(self, n_layers, comp, features):
+        super(MultiDNMFNet, self).__init__()
+        self.n_layers = n_layers
+        self.deep_nmfs = nn.ModuleList([NMFLayer(comp, features) for i in range(self.n_layers)])
+
+    def forward(self, h, x):
+        # forward pass through the network
+        for i, l in enumerate(self.deep_nmfs):
+            h = l(h, x)
+        return h
 
 
-class MuNet(nn.Module):
-    def __init__(self):
-        super().__init__()
-        self.layer1 = MuLayer()
-        self.layer2 = MuLayer()
-        self.layer3 = MuLayer()
-        self.layer4 = MuLayer()
-        self.layer5 = MuLayer()
 
-    def forward(self, h, v):
-        h1 = self.layer1(h, v)
-        h2 = self.layer2(h1, v)
-        h3 = self.layer3(h2, v)
-        h4 = self.layer4(h3, v)
-        h5 = self.layer5(h4, v)
-        return h5
+
+
+

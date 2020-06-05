@@ -7,13 +7,14 @@ from torch.utils.data.dataset import random_split
 import torch
 from my_layers import *
 from matplotlib import pyplot as plt
+from torchviz import make_dot
 
 # Data Loading
 M = np.load('synthetic_data/x.syn.many.types.0.5_sp.sp.npy')
 X = M.T
 
 # params
-n_components = 7  # check the truth rank from table
+n_components = 21  # from summary table
 samples, features = X.shape
 
 # split train/test
@@ -57,16 +58,16 @@ Trained with projected Graident decent
 
 # get instances
 constraints = utils.WeightClipper()
-deep_nmf_5 = DeepNMFModel(n_components, features)
-deep_nmf_5.apply(constraints)
+deep_nmf_model = MultiDNMFNet(15, n_components, features)
+deep_nmf_model.apply(constraints)
 criterion = nn.MSELoss()
-optimizerSGD = optim.SGD(deep_nmf_5.parameters(), lr=1e-4)
-optimizerADAM = optim.Adam(deep_nmf_5.parameters(), lr=1e-4)
+optimizerSGD = optim.SGD(deep_nmf_model.parameters(), lr=1e-4)
+optimizerADAM = optim.Adam(deep_nmf_model.parameters(), lr=1e-4)
 
 inputs = (W0_train_tensor, X_train_tensor)
 loss_values = []
 for i in range(5000):
-    out = deep_nmf_5(*inputs)
+    out = deep_nmf_model(*inputs)
     loss = criterion(out, W_train_tensor)
     print(i, loss.item())
 
@@ -74,7 +75,7 @@ for i in range(5000):
     loss.backward()
     optimizerADAM.step()
 
-    deep_nmf_5.apply(constraints)  # keep wieghts positive
+    deep_nmf_model.apply(constraints)  # keep wieghts positive
     loss_values.append(loss.item())
 
 plt.plot(loss_values)
@@ -86,10 +87,12 @@ comparison is on the reconstruction Error
 """
 
 test_inputs = (W0_test_tensor, X_test_tensor)
-netwrok_prediction = deep_nmf_5(*test_inputs)
+netwrok_prediction = deep_nmf_model(*test_inputs)
 
 network_error = utils.frobinuis_reconstruct_error(X_test_tensor, netwrok_prediction, H)
 print('deep NMF Error: ', network_error)
 
 mu_error = utils.frobinuis_reconstruct_error(X_test_tensor, W_test_tensor, H)
 print('regular MU Error: ', mu_error)
+
+# make_dot(out, params=dict(deep_nmf_model.named_parameters())).render("attached", format="png")
