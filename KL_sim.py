@@ -23,9 +23,9 @@ mask = np.random.rand(samples) < TRAIN_SIZE
 
 X_train = X[mask]
 X_test = X[~mask]
-
+    
 # MU building target labels for training using Scikit NMF
-nmf = NMF(n_components=n_components, solver='mu', beta_loss='frobenius', verbose=True)
+nmf = NMF(n_components=n_components, solver='mu', beta_loss='kullback-leibler', verbose=True)
 W_train = nmf.fit_transform(X_train)
 H = nmf.components_
 
@@ -54,28 +54,29 @@ Trained with projected Graident decent
 
 """
                     Training The Network
+                          Beta Net
 """
 
 # get instances
 constraints = utils.WeightClipper()
-deep_nmf_model = MultiDNMFNet(15, n_components, features)
-deep_nmf_model.apply(constraints)
-criterion = nn.MSELoss()
-optimizerSGD = optim.SGD(deep_nmf_model.parameters(), lr=1e-4)
-optimizerADAM = optim.Adam(deep_nmf_model.parameters(), lr=1e-4)
+deep_nmf_beta = MultiBetaDNMFNet(15, 1, n_components, features)
+deep_nmf_beta.apply(constraints)
+criterion_beta = nn.KLDivLoss()
+optimizerSGD = optim.SGD(deep_nmf_beta.parameters(), lr=1e-4)
+optimizerADAM = optim.Adam(deep_nmf_beta.parameters(), lr=1e-4)
 
 inputs = (W0_train_tensor, X_train_tensor)
 loss_values = []
 for i in range(5000):
-    out = deep_nmf_model(*inputs)
-    loss = criterion(out, W_train_tensor)
+    out = deep_nmf_beta(*inputs)
+    loss = criterion_beta(out, W_train_tensor)
     print(i, loss.item())
 
     optimizerADAM.zero_grad()
     loss.backward()
     optimizerADAM.step()
 
-    deep_nmf_model.apply(constraints)  # keep wieghts positive
+    deep_nmf_beta.apply(constraints)  # keep wieghts positive
     loss_values.append(loss.item())
 
 plt.plot(loss_values)
@@ -90,10 +91,7 @@ test_inputs = (W0_test_tensor, X_test_tensor)
 netwrok_prediction = deep_nmf_model(*test_inputs)
 
 network_error = utils.frobinuis_reconstruct_error(X_test_tensor, netwrok_prediction, H)
-print('deep NMF Error: ', network_error)
+print('deep NMF Error, Beta = 1: ', network_error)
 
 mu_error = utils.frobinuis_reconstruct_error(X_test_tensor, W_test_tensor, H)
-print('regular MU Error: ', mu_error)
-
-make_dot(out, params=dict(deep_nmf_model.named_parameters())).render("attached", format="png")
-
+print('regular MU Error, Beta = 1: ', mu_error)

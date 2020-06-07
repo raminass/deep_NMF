@@ -77,7 +77,39 @@ class MultiDNMFNet(nn.Module):
         return h
 
 
+class BetaNMFLayer(nn.Module):
+    def __init__(self, beta, comp, features):
+        super(BetaNMFLayer, self).__init__()
+        # an affine operation: y = Wx +b
+        self.beta = beta
+        self.fc1 = nn.Linear(comp, features, bias=False)  # WH
+        self.fc2 = nn.Linear(features, comp, bias=False)  # W.t*
+
+    def forward(self, y, x):
+        wh = self.fc1(y)
+        denominator = self.fc2(wh.pow(self.beta - 1))
+        numerator = self.fc2(torch.mul(x, wh.pow(self.beta - 2)))
+        denominator[denominator == 0] = EPSILON
+        delta = torch.div(numerator, denominator)
+        return torch.mul(delta, y)
 
 
+class MultiBetaDNMFNet(nn.Module):
+    '''
+    Class for a DNMF with variable layers number.
+    Input:
+        -n_layers = number of layers to cinstruct the Net
+        -comp = number of components for factorization
+        -features = original features length for each sample vector(mutational sites)
+    '''
 
+    def __init__(self, n_layers, beta, comp, features):
+        super(MultiBetaDNMFNet, self).__init__()
+        self.n_layers = n_layers
+        self.deep_nmfs = nn.ModuleList([BetaNMFLayer(beta, comp, features) for i in range(self.n_layers)])
 
+    def forward(self, h, x):
+        # forward pass through the network
+        for i, l in enumerate(self.deep_nmfs):
+            h = l(h, x)
+        return h
