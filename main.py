@@ -9,8 +9,10 @@ from my_layers import *
 from matplotlib import pyplot as plt
 from torchviz import make_dot
 
+# initial running of multiLayer where beta=2
+
 # Data Loading
-M = np.load('synthetic_data/x.syn.many.types.0.5_sp.sp.npy')
+M = np.load("synthetic_data/x.syn.many.types.0.5_sp.sp.npy")
 X = M.T
 
 # params
@@ -25,7 +27,7 @@ X_train = X[mask]
 X_test = X[~mask]
 
 # MU building target labels for training using Scikit NMF
-nmf = NMF(n_components=n_components, solver='mu', beta_loss='frobenius', verbose=True)
+nmf = NMF(n_components=n_components, solver="mu", beta_loss="frobenius", verbose=True)
 W_train = nmf.fit_transform(X_train)
 H = nmf.components_
 
@@ -34,7 +36,9 @@ W_test = nmf.transform(X_test)
 
 # initialize exposures
 W0_train = utils.initialize_transformed(X_train, n_components)
-W0_test = utils.initialize_transformed(X_test, n_components)  # might be per sample or include the whole X ??
+W0_test = utils.initialize_transformed(
+    X_test, n_components
+)  # might be per sample or include the whole X ??
 
 # Tensoring the Arrays
 X_train_tensor = torch.from_numpy(X_train).float()
@@ -90,10 +94,11 @@ test_inputs = (W0_test_tensor, X_test_tensor)
 netwrok_prediction = deep_nmf_model(*test_inputs)
 
 network_error = utils.frobinuis_reconstruct_error(X_test_tensor, netwrok_prediction, H)
-print('deep NMF Error: ', network_error)
+print("deep NMF Error: ", network_error)
 
 mu_error = utils.frobinuis_reconstruct_error(X_test_tensor, W_test_tensor, H)
-print('regular MU Error: ', mu_error)
+print("regular MU Error: ", mu_error)
 
-make_dot(out, params=dict(deep_nmf_model.named_parameters())).render("attached", format="png")
-
+make_dot(out, params=dict(deep_nmf_model.named_parameters())).render(
+    "attached", format="png"
+)

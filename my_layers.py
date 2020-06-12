@@ -6,18 +6,6 @@ import torch.nn.functional as F
 EPSILON = torch.finfo(torch.float32).eps
 
 
-class WeightClipper(object):
-    def __init__(self, frequency=5):
-        self.frequency = frequency
-
-    def __call__(self, module):
-        # filter the variables to get the ones you want
-        if hasattr(module, "weight"):
-            w = module.weight.data
-            w = w.clamp(min=0)
-            module.weight.data = w
-
-
 class NMFLayer(nn.Module):
     def __init__(self, comp, features):
         super(NMFLayer, self).__init__()
@@ -56,19 +44,21 @@ class DeepNMFModel(nn.Module):
 
 
 class MultiDNMFNet(nn.Module):
-    '''
+    """
     Class for a DNMF with variable layers number.
     Input:
         -n_layers = number of layers to cinstruct the Net
         -comp = number of components for factorization
         -features = original features length for each sample vector(mutational sites)
 
-    '''
+    """
 
     def __init__(self, n_layers, comp, features):
         super(MultiDNMFNet, self).__init__()
         self.n_layers = n_layers
-        self.deep_nmfs = nn.ModuleList([NMFLayer(comp, features) for i in range(self.n_layers)])
+        self.deep_nmfs = nn.ModuleList(
+            [NMFLayer(comp, features) for i in range(self.n_layers)]
+        )
 
     def forward(self, h, x):
         # forward pass through the network
@@ -95,18 +85,46 @@ class BetaNMFLayer(nn.Module):
 
 
 class MultiBetaDNMFNet(nn.Module):
-    '''
+    """
     Class for a DNMF with variable layers number.
     Input:
         -n_layers = number of layers to cinstruct the Net
+        -beta = beta divergence
         -comp = number of components for factorization
         -features = original features length for each sample vector(mutational sites)
-    '''
+    """
 
     def __init__(self, n_layers, beta, comp, features):
         super(MultiBetaDNMFNet, self).__init__()
         self.n_layers = n_layers
-        self.deep_nmfs = nn.ModuleList([BetaNMFLayer(beta, comp, features) for i in range(self.n_layers)])
+        self.deep_nmfs = nn.ModuleList(
+            [BetaNMFLayer(beta, comp, features) for i in range(self.n_layers)]
+        )
+
+    def forward(self, h, x):
+        # forward pass through the network
+        for i, l in enumerate(self.deep_nmfs):
+            h = l(h, x)
+        return h
+
+
+
+class UnsuperVisedDNMFNet(nn.Module):
+    """
+    Class for a DNMF with variable layers number.
+    Input:
+        -n_layers = number of layers to cinstruct the Net
+        -beta = beta divergence
+        -comp = number of components for factorization
+        -features = original features length for each sample vector(mutational sites)
+    """
+
+    def __init__(self, n_layers, beta, comp, features):
+        super(MultiBetaDNMFNet, self).__init__()
+        self.n_layers = n_layers
+        self.deep_nmfs = nn.ModuleList(
+            [BetaNMFLayer(beta, comp, features) for i in range(self.n_layers)]
+        )
 
     def forward(self, h, x):
         # forward pass through the network
