@@ -6,9 +6,13 @@ import torch.nn.functional as F
 EPSILON = torch.finfo(torch.float32).eps
 
 
-class NMFLayer(nn.Module):
+class FrNMFLayer(nn.Module):
+    """
+    Multiplicative update with Frobinus norm
+    """
+
     def __init__(self, comp, features):
-        super(NMFLayer, self).__init__()
+        super(FrNMFLayer, self).__init__()
         # an affine operation: y = Wx +b
         self.fc1 = nn.Linear(comp, comp, bias=False)
         self.fc2 = nn.Linear(features, comp, bias=False)
@@ -21,18 +25,18 @@ class NMFLayer(nn.Module):
         return torch.mul(delta, y)
 
 
-class DeepNMFModel(nn.Module):
+class Fr5NMFModel(nn.Module):
     def __init__(self, comp, features):
         """
         built manually due to
         https://github.com/pytorch/pytorch/issues/19808#issuecomment-487257761
         """
-        super(DeepNMFModel, self).__init__()
-        self.layer1 = NMFLayer(comp, features)
-        self.layer2 = NMFLayer(comp, features)
-        self.layer3 = NMFLayer(comp, features)
-        self.layer4 = NMFLayer(comp, features)
-        self.layer5 = NMFLayer(comp, features)
+        super(Fr5NMFModel, self).__init__()
+        self.layer1 = FrNMFLayer(comp, features)
+        self.layer2 = FrNMFLayer(comp, features)
+        self.layer3 = FrNMFLayer(comp, features)
+        self.layer4 = FrNMFLayer(comp, features)
+        self.layer5 = FrNMFLayer(comp, features)
 
     def forward(self, h, x):
         h1 = self.layer1(h, x)
@@ -43,21 +47,21 @@ class DeepNMFModel(nn.Module):
         return h5
 
 
-class MultiDNMFNet(nn.Module):
+class MultiFrDNMFNet(nn.Module):
     """
     Class for a DNMF with variable layers number.
     Input:
         -n_layers = number of layers to cinstruct the Net
         -comp = number of components for factorization
         -features = original features length for each sample vector(mutational sites)
-
+    each layer is MU of Frobinus norm
     """
 
     def __init__(self, n_layers, comp, features):
-        super(MultiDNMFNet, self).__init__()
+        super(MultiFrDNMFNet, self).__init__()
         self.n_layers = n_layers
         self.deep_nmfs = nn.ModuleList(
-            [NMFLayer(comp, features) for i in range(self.n_layers)]
+            [FrNMFLayer(comp, features) for i in range(self.n_layers)]
         )
 
     def forward(self, h, x):
@@ -68,6 +72,12 @@ class MultiDNMFNet(nn.Module):
 
 
 class BetaNMFLayer(nn.Module):
+    """
+    mu for beta divergence based on Fevote article, 
+    beta=1 is KL
+    beta=2 is Frobinus
+    """
+
     def __init__(self, beta, comp, features):
         super(BetaNMFLayer, self).__init__()
         # an affine operation: y = Wx +b
@@ -75,6 +85,7 @@ class BetaNMFLayer(nn.Module):
         self.fc1 = nn.Linear(comp, features, bias=False)  # WH
         self.fc2 = nn.Linear(features, comp, bias=False)  # W.t*
 
+    # check if to use different fc2 layers
     def forward(self, y, x):
         wh = self.fc1(y)
         denominator = self.fc2(wh.pow(self.beta - 1))
@@ -108,7 +119,6 @@ class MultiBetaDNMFNet(nn.Module):
         return h
 
 
-
 class UnsuperVisedDNMFNet(nn.Module):
     """
     Class for a DNMF with variable layers number.
@@ -120,7 +130,7 @@ class UnsuperVisedDNMFNet(nn.Module):
     """
 
     def __init__(self, n_layers, beta, comp, features):
-        super(MultiBetaDNMFNet, self).__init__()
+        super(UnsuperVisedDNMFNet, self).__init__()
         self.n_layers = n_layers
         self.deep_nmfs = nn.ModuleList(
             [BetaNMFLayer(beta, comp, features) for i in range(self.n_layers)]

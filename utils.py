@@ -30,9 +30,9 @@ def frobinuis_reconstruct_error(x, w, h):
     return np.linalg.norm(reconstructed)
 
 
-def KL(a, b):
-    a = np.asarray(a, dtype=np.float)
-    b = np.asarray(b, dtype=np.float)
+def kl_reconstruct_error(x, w, h):
+    x = x.data.numpy()
+    w = w.data.numpy()
     return np.sum(
         np.where(a != 0, np.where(b != 0, a * np.log(a / b) - a + b, 0), 0)
     )  # from wp, zeros aren't counted
