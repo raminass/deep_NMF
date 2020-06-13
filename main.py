@@ -62,7 +62,7 @@ Trained with projected Graident decent
 
 # get instances
 constraints = utils.WeightClipper()
-deep_nmf_model = MultiFrDNMFNet(15, n_components, features)
+deep_nmf_model = MultiFrDNMFNet(9, n_components, features)
 deep_nmf_model.apply(constraints)
 criterion = nn.MSELoss()
 optimizerSGD = optim.SGD(deep_nmf_model.parameters(), lr=1e-4)

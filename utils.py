@@ -24,18 +24,16 @@ def initialize_transformed(x, n_components):
 
 
 def frobinuis_reconstruct_error(x, w, h):
-    x = x.data.numpy()
-    w = w.data.numpy()
-    reconstructed = x - w.dot(h)
-    return np.linalg.norm(reconstructed)
+    return np.linalg.norm(x - np.dot(w, h))
 
 
 def kl_reconstruct_error(x, w, h):
-    x = x.data.numpy()
-    w = w.data.numpy()
+    a = x
+    b = w.dot(h)
     return np.sum(
         np.where(a != 0, np.where(b != 0, a * np.log(a / b) - a + b, 0), 0)
     )  # from wp, zeros aren't counted
+    # np.sqrt(2*np.sum(np.where(a != 0, np.where(b != 0, a * np.log(a / b) - a + b, 0), 0))) at Scikit, incorrect imo
 
 
 def sBCD_update(V, W, H, O, obj="kl"):
