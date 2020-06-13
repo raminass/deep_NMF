@@ -38,9 +38,11 @@ def KL(a, b):
     )  # from wp, zeros aren't counted
 
 
-# Fast beta-divergence update, using: Fast Bregman Divergence NMF using Taylor Expansion and Coordinate Descent, Li 2012
-# O parameter is a masking matrix, for cross-validation purposes, pass O=1
 def sBCD_update(V, W, H, O, obj="kl"):
+    """
+    Fast beta-divergence update, using: Fast Bregman Divergence NMF using Taylor Expansion and Coordinate Descent, Li 2012
+    O parameter is a masking matrix, for cross-validation purposes, pass O=1
+    """
     n, m = V.shape
     K = W.shape[1]
     V_tag = np.dot(W, H)
