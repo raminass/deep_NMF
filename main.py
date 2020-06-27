@@ -1,104 +1,96 @@
-import utils
-import numpy as np
-from sklearn.decomposition import NMF
 import torch.optim as optim
-import torch.utils.data as data_utils
-from torch.utils.data.dataset import random_split
-import torch
-from my_layers import *
 from matplotlib import pyplot as plt
-from torchviz import make_dot
+from my_layers import *
+from utils import *
+import pandas as pd
 
-# initial running of multiLayer where beta=2
+EPSILON = np.finfo(np.float32).eps
 
-# Data Loading
-M = np.load("synthetic_data/x.syn.many.types.0.5_sp.sp.npy")
-X = M.T
+# Data loading
+signatures_df = pd.read_csv('data/simulated/ground.truth.syn.sigs.csv', sep=',')
+exposures_df = pd.read_csv('data/simulated/ground.truth.syn.exposures.csv', sep=',')
+category_df = pd.read_csv('data/simulated/ground.truth.syn.catalog.csv', sep=',')
 
-# params
-n_components = 21  # from summary table
-samples, features = X.shape
+W = signatures_df.iloc[:, 2:].values  # (f,k)
+H = exposures_df.iloc[:, 1:].values  # (k,n)
+V = category_df.iloc[:, 2:].values  # (f,n)
 
+n_components = H.shape[0]
+features, samples = V.shape
+
+H_init = initialize_exposures(V, n_components, method='ones')  # (n,k)
 # split train/test
 TRAIN_SIZE = 0.80
 mask = np.random.rand(samples) < TRAIN_SIZE
 
-X_train = X[mask]
-X_test = X[~mask]
+############################### Tensoring ###################################
+v_train = torch.from_numpy(V[:, mask].T).float()
+v_test = torch.from_numpy(V[:, ~mask].T).float()
+h_train = torch.from_numpy(H[:, mask].T).float()
+h_0_train = torch.from_numpy(H_init[:, mask].T).float()
+h_0_test = torch.from_numpy(H_init[:, ~mask].T).float()
 
-# MU building target labels for training using Scikit NMF
-nmf = NMF(n_components=n_components, solver="mu", beta_loss="frobenius", verbose=True)
-W_train = nmf.fit_transform(X_train)
-H = nmf.components_
+if __name__ == "__main__":
+    # setup params
+    lr = 0.0001
+    num_layers = 10
+    network_train_iteration = 2000
+    mu_iter = 50
 
-# find exposures for the test set
-W_test = nmf.transform(X_test)
+    ############################ MU update exposures ##########################
+    w = W.copy()
+    h = H_init[:, ~mask].copy()
+    v = V[:, ~mask].copy()
+    mu_error = np.zeros(mu_iter)
 
-# initialize exposures
-W0_train = utils.initialize_transformed(X_train, n_components)
-W0_test = utils.initialize_transformed(
-    X_test, n_components
-)  # might be per sample or include the whole X ??
+    start_iter = time.time()
+    for i in range(mu_iter):
+        numinator = np.dot(w.T, v)
+        denominator = np.dot(w.T.dot(w), h) + EPSILON
+        h *= numinator
+        h /= denominator
+        mu_error[i] = round(frobinuis_reconstruct_error(v, w, h), 0)
+    mu_elapsed = round(time.time() - start_iter, 5)
 
-# Tensoring the Arrays
-X_train_tensor = torch.from_numpy(X_train).float()
-W_train_tensor = torch.from_numpy(W_train).float()
-W0_train_tensor = torch.from_numpy(W0_train).float()
+    ############################# Deep NMF ###################################
 
-X_test_tensor = torch.from_numpy(X_test).float()
-W_test_tensor = torch.from_numpy(W_test).float()
-W0_test_tensor = torch.from_numpy(W0_test).float()
+    # build the architicture
+    constraints = WeightClipper(lower=0)
+    deep_nmf = MultiFrDNMFNet(num_layers, n_components, features)
+    deep_nmf.apply(constraints)
+    criterion = nn.MSELoss()
 
-"""
-Basic Model
+    optimizerADAM = optim.Adam(deep_nmf.parameters(), lr=lr)
 
-5 layers with non-negative constrains on weights
-Trained with projected Graident decent
-"""
+    # Train the Network
+    inputs = (h_0_train, v_train)
+    loss_values = []
+    for i in range(network_train_iteration):
+        out = deep_nmf(*inputs)
+        loss = criterion(out, h_train)
+        print(i, loss.item())
 
-"""
-                    Training The Network
-"""
+        optimizerADAM.zero_grad()
+        loss.backward()
+        optimizerADAM.step()
 
-# get instances
-constraints = utils.WeightClipper()
-deep_nmf_model = MultiFrDNMFNet(9, n_components, features)
-deep_nmf_model.apply(constraints)
-criterion = nn.MSELoss()
-optimizerSGD = optim.SGD(deep_nmf_model.parameters(), lr=1e-4)
-optimizerADAM = optim.Adam(deep_nmf_model.parameters(), lr=1e-4)
+        deep_nmf.apply(constraints)  # keep wieghts positive after gradient decent
+        loss_values.append(loss.item())
 
-inputs = (W0_train_tensor, X_train_tensor)
-loss_values = []
-for i in range(5000):
-    out = deep_nmf_model(*inputs)
-    loss = criterion(out, W_train_tensor)
-    print(i, loss.item())
+    test_inputs = (h_0_test, v_test)
+    start_iter = time.time()
+    netwrok_prediction = deep_nmf(*test_inputs)
+    dnmf_elapsed = round(time.time() - start_iter, 5)
+    dnmf_err = round(frobinuis_reconstruct_error(v, w, netwrok_prediction.detach().numpy().T), 0)
 
-    optimizerADAM.zero_grad()
-    loss.backward()
-    optimizerADAM.step()
-
-    deep_nmf_model.apply(constraints)  # keep wieghts positive
-    loss_values.append(loss.item())
-
-plt.plot(loss_values)
-
-"""
-Compare with Test Data
-
-comparison is on the reconstruction Error
-"""
-
-test_inputs = (W0_test_tensor, X_test_tensor)
-netwrok_prediction = deep_nmf_model(*test_inputs)
-
-network_error = utils.frobinuis_reconstruct_error(X_test_tensor, netwrok_prediction, H)
-print("deep NMF Error: ", network_error)
-
-mu_error = utils.frobinuis_reconstruct_error(X_test_tensor, W_test_tensor, H)
-print("regular MU Error: ", mu_error)
-
-make_dot(out, params=dict(deep_nmf_model.named_parameters())).render(
-    "attached", format="png"
-)
+    epochs = range(0, network_train_iteration - 1)
+    # plt.semilogy(mu_training_loss, '-*', label='Training loss mu')
+    plt.semilogy(loss_values, '-*', label='Training loss DNN')
+    plt.title(f"lr={lr}, layers={num_layers}, iterations={network_train_iteration}")
+    plt.xlabel('Epochs')
+    plt.ylabel('Loss')
+    plt.legend()
+    plt.annotate(
+        f'DNMF_Error={dnmf_err} \n MU_Error={mu_error[-1]} \n DNMF_time={dnmf_elapsed} \n MU_time={mu_elapsed}',
+        xy=(0.62, 0.65), xycoords='axes fraction')
+    plt.show()
