@@ -5,6 +5,17 @@ import torch.nn.functional as F
 
 EPSILON = torch.finfo(torch.float32).eps
 
+class WeightClipper(object):
+    def __init__(self, frequency=5):
+        self.frequency = frequency
+
+    def __call__(self, module):
+        # filter the variables to get the ones you want
+        if hasattr(module, "weight"):
+            w = module.weight.data
+            w = w.clamp(min=0)
+            module.weight.data = w
+
 
 class FrNMFLayer(nn.Module):
     """
@@ -23,28 +34,6 @@ class FrNMFLayer(nn.Module):
         denominator[denominator == 0] = EPSILON
         delta = torch.div(numerator, denominator)
         return torch.mul(delta, y)
-
-
-class Fr5NMFModel(nn.Module):
-    def __init__(self, comp, features):
-        """
-        built manually due to
-        https://github.com/pytorch/pytorch/issues/19808#issuecomment-487257761
-        """
-        super(Fr5NMFModel, self).__init__()
-        self.layer1 = FrNMFLayer(comp, features)
-        self.layer2 = FrNMFLayer(comp, features)
-        self.layer3 = FrNMFLayer(comp, features)
-        self.layer4 = FrNMFLayer(comp, features)
-        self.layer5 = FrNMFLayer(comp, features)
-
-    def forward(self, h, x):
-        h1 = self.layer1(h, x)
-        h2 = self.layer2(h1, x)
-        h3 = self.layer3(h2, x)
-        h4 = self.layer4(h3, x)
-        h5 = self.layer5(h4, x)
-        return h5
 
 
 class MultiFrDNMFNet(nn.Module):

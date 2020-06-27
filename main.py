@@ -11,9 +11,12 @@ signatures_df = pd.read_csv('data/simulated/ground.truth.syn.sigs.csv', sep=',')
 exposures_df = pd.read_csv('data/simulated/ground.truth.syn.exposures.csv', sep=',')
 category_df = pd.read_csv('data/simulated/ground.truth.syn.catalog.csv', sep=',')
 
-W = signatures_df.iloc[:, 2:].values  # (f,k)
-H = exposures_df.iloc[:, 1:].values  # (k,n)
-V = category_df.iloc[:, 2:].values  # (f,n)
+# W = signatures_df.iloc[:, 2:].values  # (f,k)
+# H = exposures_df.iloc[:, 1:].values  # (k,n)
+# V = category_df.iloc[:, 2:].values  # (f,n)
+W = abs(np.random.randn(96, 21))  # (f,k) normal
+H = abs(np.random.randn(21, 1350))  # (k,n) normal
+V = W.dot(H)  # (f,n)
 
 n_components = H.shape[0]
 features, samples = V.shape
@@ -29,11 +32,12 @@ v_test = torch.from_numpy(V[:, ~mask].T).float()
 h_train = torch.from_numpy(H[:, mask].T).float()
 h_0_train = torch.from_numpy(H_init[:, mask].T).float()
 h_0_test = torch.from_numpy(H_init[:, ~mask].T).float()
+W_tensor = torch.from_numpy(W.T).float()
 
 if __name__ == "__main__":
     # setup params
     lr = 0.0001
-    num_layers = 10
+    num_layers = 8
     network_train_iteration = 2000
     mu_iter = 50
 
@@ -45,9 +49,9 @@ if __name__ == "__main__":
 
     start_iter = time.time()
     for i in range(mu_iter):
-        numinator = np.dot(w.T, v)
+        nominator = np.dot(w.T, v)
         denominator = np.dot(w.T.dot(w), h) + EPSILON
-        h *= numinator
+        h *= nominator
         h /= denominator
         mu_error[i] = round(frobinuis_reconstruct_error(v, w, h), 0)
     mu_elapsed = round(time.time() - start_iter, 5)
@@ -58,7 +62,7 @@ if __name__ == "__main__":
     constraints = WeightClipper(lower=0)
     deep_nmf = MultiFrDNMFNet(num_layers, n_components, features)
     deep_nmf.apply(constraints)
-    criterion = nn.MSELoss()
+    criterion = nn.MSELoss(reduction='mean')
 
     optimizerADAM = optim.Adam(deep_nmf.parameters(), lr=lr)
 
@@ -67,7 +71,8 @@ if __name__ == "__main__":
     loss_values = []
     for i in range(network_train_iteration):
         out = deep_nmf(*inputs)
-        loss = criterion(out, h_train)
+        loss = criterion(out, h_train)  # loss between predicted and truth
+        # loss = criterion(out.mm(W_tensor), v_train) # reconstruction loss
         print(i, loss.item())
 
         optimizerADAM.zero_grad()
@@ -81,7 +86,7 @@ if __name__ == "__main__":
     start_iter = time.time()
     netwrok_prediction = deep_nmf(*test_inputs)
     dnmf_elapsed = round(time.time() - start_iter, 5)
-    dnmf_err = round(frobinuis_reconstruct_error(v, w, netwrok_prediction.detach().numpy().T), 0)
+    dnmf_err = round(frobinuis_reconstruct_error(v, w, netwrok_prediction.detach().numpy().T), 2)
 
     epochs = range(0, network_train_iteration - 1)
     # plt.semilogy(mu_training_loss, '-*', label='Training loss mu')
