@@ -12,12 +12,15 @@ signatures_df = pd.read_csv('data/simulated/ground.truth.syn.sigs.csv', sep=',')
 exposures_df = pd.read_csv('data/simulated/ground.truth.syn.exposures.csv', sep=',')
 category_df = pd.read_csv('data/simulated/ground.truth.syn.catalog.csv', sep=',')
 
-# W = signatures_df.iloc[:, 2:].values  # (f,k)
-# H = exposures_df.iloc[:, 1:].values  # (k,n)
-# V = category_df.iloc[:, 2:].values  # (f,n)
-W = abs(np.random.randn(96, 21))  # (f,k) normal
-H = abs(np.random.randn(21, 1350))  # (k,n) normal
-V = W.dot(H)  # (f,n)
+# to use genetic synthitic data
+W = signatures_df.iloc[:, 2:].values  # (f,k)
+H = exposures_df.iloc[:, 1:].values  # (k,n)
+V = category_df.iloc[:, 2:].values  # (f,n)
+
+# to use simulated data
+# W = abs(np.random.randn(96, 21))  # (f,k) normal
+# H = abs(np.random.randn(21, 1350))  # (k,n) normal
+# V = W.dot(H) + 0.1 * np.random.randn(96,1350)  # (f,n)
 
 n_components = H.shape[0]
 features, samples = V.shape
@@ -39,7 +42,7 @@ if __name__ == "__main__":
     # setup params
     lr = 0.0009
     num_layers = 7
-    network_train_iteration = 1000
+    network_train_iteration = 200
     mu_iter = 50
     shared = False
 
@@ -55,7 +58,8 @@ if __name__ == "__main__":
 
     # build the architicture
     constraints = WeightClipper(lower=0)
-    deep_nmf = MultiFrDNMFNet(num_layers, n_components, features)
+    deep_nmf = SharedFrDNMFNet(num_layers, n_components, features) if shared else MultiFrDNMFNet(num_layers,
+                                                                                                 n_components, features)
     deep_nmf.apply(constraints)
     criterion = nn.MSELoss(reduction='mean')
 
@@ -87,11 +91,11 @@ if __name__ == "__main__":
     epochs = range(0, network_train_iteration - 1)
     # plt.semilogy(mu_training_loss, '-*', label='Training loss mu')
     plt.semilogy(loss_values, '-*', label='Training loss DNN')
-    plt.title(f"Beta=2, weights not shared - Scikit")
+    plt.title(f"Beta=2, DNMF Vs Scikit-MU")
     plt.xlabel('Epochs')
     plt.ylabel('Loss')
     plt.legend()
     plt.annotate(
-        f'PARAMS: \n lr={lr} \n layers={num_layers} \n Train_iter={network_train_iteration} \n Results: \n DNMF_Error={dnmf_err} \n MU_Error={mu_error} \n DNMF_time={dnmf_elapsed} \n MU_time={mu_elapsed}',
+        f'PARAMS: \n W_shared={shared} \n lr={lr} \n layers={num_layers} \n Train_iter={network_train_iteration} \n Results: \n DNMF_Error={dnmf_err} \n MU_Error={mu_error} \n DNMF_time={dnmf_elapsed} \n MU_time={mu_elapsed}',
         xy=(0.68, 0.5), xycoords='axes fraction')
     plt.show()
