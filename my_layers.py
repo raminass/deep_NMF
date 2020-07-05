@@ -19,6 +19,7 @@ class WeightClipper(object):
             module.weight.data = w
 
 
+# ============================ Basic Net ===============================
 class FrNMFLayer(nn.Module):
     """
     Multiplicative update with Frobinus norm
@@ -62,6 +63,53 @@ class MultiFrDNMFNet(nn.Module):
         return h
 
 
+# ================================ Regularized Net ======================================
+class RegLayer(nn.Module):
+    """
+    Multiplicative update with Frobinus norm
+    A bias is added to the denominator to reflect the regularization constrains
+    """
+
+    def __init__(self, comp, features):
+        super(RegLayer, self).__init__()
+        # an affine operation: y = Wx +b
+        self.fc1 = nn.Linear(comp, comp, bias=True)  # bias in denominator
+        self.fc2 = nn.Linear(features, comp, bias=False)
+
+    def forward(self, y, x):
+        denominator = self.fc1(y)
+        numerator = self.fc2(x)
+        denominator[denominator == 0] = EPSILON
+        delta = torch.div(numerator, denominator)
+        return torch.mul(delta, y)
+
+
+class RegNet(nn.Module):
+    """
+    Class for a DNMF with varying layers number.
+    Input:
+        -n_layers = number of layers to cinstruct the Net
+        -comp = number of components for factorization
+        -features = original features length for each sample vector(mutational sites)
+    each layer is MU of Frobinus norm
+    """
+
+    def     __init__(self, n_layers, comp, features):
+        super(RegNet, self).__init__()
+        self.n_layers = n_layers
+        self.deep_nmfs = nn.ModuleList(
+            [FrNMFLayer(comp, features) for i in range(self.n_layers)]
+        )
+
+    def forward(self, h, x):
+        # forward pass through the network
+        for i, l in enumerate(self.deep_nmfs):
+            h = l(h, x)
+        return h
+
+
+# ================================ shared w  ========================
+
 class SharedFrDNMFNet(nn.Module):
     """
     Class for a DNMF with variable layers number.
@@ -84,6 +132,7 @@ class SharedFrDNMFNet(nn.Module):
         return h
 
 
+# ============================== General Beta Net ===================================
 class BetaNMFLayer(nn.Module):
     """
     mu for beta divergence based on Fevote article,
@@ -132,46 +181,22 @@ class MultiBetaDNMFNet(nn.Module):
         return h
 
 
-class UnsuperVisedDNMFNet(nn.Module):
-    """
-    Class for a DNMF with variable layers number.
-    Input:
-        -n_layers = number of layers to cinstruct the Net
-        -beta = beta divergence
-        -comp = number of components for factorization
-        -features = original features length for each sample vector(mutational sites)
-    """
-
-    def __init__(self, n_layers, beta, comp, features):
-        super(UnsuperVisedDNMFNet, self).__init__()
-        self.n_layers = n_layers
-        self.deep_nmfs = nn.ModuleList(
-            [BetaNMFLayer(beta, comp, features) for i in range(self.n_layers)]
-        )
-
-    def forward(self, h, x):
-        # forward pass through the network
-        for i, l in enumerate(self.deep_nmfs):
-            h = l(h, x)
-        return h
+# ============================== Unsupervised Net =================================
 
 
-class UnsuperLayer(nn.Module):
+class UnSuperLayer(nn.Module):
     """
     Multiplicative update with Frobinus norm
     """
 
     def __init__(self, comp, features):
-        super(UnsuperLayer, self).__init__()
-        # an affine operation: y = Wx +b
-        self.fc1 = nn.Linear(comp, comp, bias=False)
-        self.fc2 = nn.Linear(features, comp, bias=False)
-        self.fc1 = nn.Linear(features, features, bias=False)
-        self.fc2 = nn.Linear(features, comp, bias=False)
+        super(UnSuperLayer, self).__init__()
+        self.w = torch.nn.Parameter(data=torch.Tensor(comp, features), requires_grad=True)
+        self.w.data.uniform_(0, 1)
 
     def forward(self, y, x):
-        denominator = self.fc1(y)
-        numerator = self.fc2(x)
+        denominator = y.mm(self.w.mm(torch.transpose(self.w, 0, 1)))
+        numerator = x.mm(torch.transpose(self.w, 0, 1))
         denominator[denominator == 0] = EPSILON
         delta = torch.div(numerator, denominator)
         return torch.mul(delta, y)
@@ -191,7 +216,7 @@ class UnsuperNet(nn.Module):
         super(UnsuperNet, self).__init__()
         self.n_layers = n_layers
         self.deep_nmfs = nn.ModuleList(
-            [FrNMFLayer(comp, features) for i in range(self.n_layers)]
+            [UnSuperLayer(comp, features) for i in range(self.n_layers)]
         )
 
     def forward(self, h, x):

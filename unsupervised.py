@@ -3,6 +3,9 @@ from matplotlib import pyplot as plt
 from my_layers import *
 from utils import *
 import pandas as pd
+import sklearn.decomposition as sc
+import nimfa as nm
+from nimfa.methods.seeding import nndsvd
 
 EPSILON = np.finfo(np.float32).eps
 
@@ -11,58 +14,56 @@ signatures_df = pd.read_csv('data/simulated/ground.truth.syn.sigs.csv', sep=',')
 exposures_df = pd.read_csv('data/simulated/ground.truth.syn.exposures.csv', sep=',')
 category_df = pd.read_csv('data/simulated/ground.truth.syn.catalog.csv', sep=',')
 
-# W = signatures_df.iloc[:, 2:].values  # (f,k)
-# H = exposures_df.iloc[:, 1:].values  # (k,n)
-# V = category_df.iloc[:, 2:].values  # (f,n)
-W = abs(np.random.randn(96, 21))  # (f,k) normal
-H = abs(np.random.randn(21, 1350))  # (k,n) normal
-V = W.dot(H)  # (f,n)
+# to use genetic synthitic data
+W = signatures_df.iloc[:, 2:].values  # (f,k)
+H = exposures_df.iloc[:, 1:].values  # (k,n)
+V = category_df.iloc[:, 2:].values  # (f,n)
+
+# to use simulated data
+# W = abs(np.random.randn(96, 21))  # (f,k) normal
+# H = abs(np.random.randn(21, 1350))  # (k,n) normal
+# V = W.dot(H) + 0.1 * np.random.randn(96,1350)  # (f,n)
 
 n_components = H.shape[0]
 features, samples = V.shape
 
-H_init = initialize_exposures(V, n_components, method='ones')  # (n,k)
+H_init = initialize_exposures(V, n_components, method='average')  # (n,k)
+
 # split train/test
 TRAIN_SIZE = 0.80
 mask = np.random.rand(samples) < TRAIN_SIZE
 
+W_0, H_0 = nndsvd.Nndsvd().initialize(V[:, mask], n_components, {'flag': 0})
 ############################### Tensoring ###################################
 v_train = torch.from_numpy(V[:, mask].T).float()
 v_test = torch.from_numpy(V[:, ~mask].T).float()
 h_train = torch.from_numpy(H[:, mask].T).float()
 h_0_train = torch.from_numpy(H_init[:, mask].T).float()
+# h_0_train = torch.from_numpy(H_0.T).float()
 h_0_test = torch.from_numpy(H_init[:, ~mask].T).float()
-W_tensor = torch.from_numpy(W.T).float()
 
 if __name__ == "__main__":
     # setup params
-    lr = 0.0001
-    num_layers = 5
+    lr = 0.001
+    num_layers = 7
     network_train_iteration = 1000
     mu_iter = 50
 
     ############################ MU update exposures ##########################
-    w = W.copy()
-    h = H_init[:, ~mask].copy()
-    v = V[:, ~mask].copy()
-    mu_error = np.zeros(mu_iter)
-
-    start_iter = time.time()
-    for i in range(mu_iter):
-        nominator = np.dot(w.T, v)
-        denominator = np.dot(w.T.dot(w), h) + EPSILON
-        h *= nominator
-        h /= denominator
-        mu_error[i] = round(frobinuis_reconstruct_error(v, w, h), 0)
-    mu_elapsed = round(time.time() - start_iter, 5)
+    model = nm.Nmf(V[:, mask], rank=n_components, max_iter=1000, track_error=True)
+    mu_fit = model.factorize()
+    mu_training_loss = np.sqrt(model.tracker.get_error())
 
     ############################# Deep NMF ###################################
 
     # build the architicture
     constraints = WeightClipper(lower=0)
-    deep_nmf = UnSuperNet(num_layers, n_components, features)
+    deep_nmf = RegNet(num_layers, n_components, features)
+    dnmf_w = torch.nn.init.uniform_(torch.Tensor(n_components, features), 0, 1)
+    # dnmf_w = torch.((n_components, features))
+    # dnmf_w = torch.from_numpy(W_0.T).float()
     deep_nmf.apply(constraints)
-    criterion = nn.MSELoss(reduction='mean')
+    criterion = nn.MSELoss()
 
     optimizerADAM = optim.Adam(deep_nmf.parameters(), lr=lr)
 
@@ -71,8 +72,12 @@ if __name__ == "__main__":
     loss_values = []
     for i in range(network_train_iteration):
         out = deep_nmf(*inputs)
-        loss = criterion(out, h_train)  # loss between predicted and truth
-        # loss = criterion(out.mm(W_tensor), v_train) # reconstruction loss
+
+        R = v_train - out.mm(dnmf_w)
+        loss = torch.sum(torch.mul(R, R))
+
+        # loss = criterion(v_train, out.mm(dnmf_w))  # loss between predicted and truth
+
         print(i, loss.item())
 
         optimizerADAM.zero_grad()
@@ -80,22 +85,30 @@ if __name__ == "__main__":
         optimizerADAM.step()
 
         deep_nmf.apply(constraints)  # keep wieghts positive after gradient decent
+        h_out = torch.transpose(out.data, 0, 1)
+        h_out_t = out.data
+        dnmf_w = dnmf_w * (h_out.mm(v_train)).div(h_out.mm(h_out_t).mm(dnmf_w))
         loss_values.append(loss.item())
 
-    test_inputs = (h_0_test, v_test)
-    start_iter = time.time()
-    netwrok_prediction = deep_nmf(*test_inputs)
-    dnmf_elapsed = round(time.time() - start_iter, 5)
-    dnmf_err = round(frobinuis_reconstruct_error(v, w, netwrok_prediction.detach().numpy().T), 2)
+    # test_inputs = (h_0_test, v_test)
+    # start_iter = time.time()
+    # netwrok_prediction = deep_nmf(*test_inputs)
+    # dnmf_elapsed = round(time.time() - start_iter, 5)
+    # dnmf_err = round(
+    #     frobinuis_reconstruct_error(V[:, ~mask], dnmf_w.data.numpy().T, netwrok_prediction.data.numpy().T), 2)
+    # mu_error = round(frobinuis_reconstruct_error(V[:, ~mask], W, fit.coef()), 2)
+
+    frobinuis_reconstruct_error(V[:, mask], dnmf_w.data.numpy().T, out.data.numpy().T)
+    frobinuis_reconstruct_error(V[:, mask], mu_fit.basis(), mu_fit.coef())
 
     epochs = range(0, network_train_iteration - 1)
-    # plt.semilogy(mu_training_loss, '-*', label='Training loss mu')
-    plt.semilogy(loss_values, '-*', label='Training loss DNN')
-    plt.title(f"Beta=2, weights not shared")
+    plt.semilogy(mu_training_loss, '-*', label='Training loss mu')
+    plt.semilogy(np.sqrt(loss_values), '-*', label='Training loss DNN')
+    plt.title(f"Beta=2, DNMF Vs MU")
     plt.xlabel('Epochs')
     plt.ylabel('Loss')
     plt.legend()
-    plt.annotate(
-        f'PARAMS: \n lr={lr} \n layers={num_layers} \n Train_iter={network_train_iteration} \n Results: \n DNMF_Error={dnmf_err} \n MU_Error={mu_error[-1]} \n DNMF_time={dnmf_elapsed} \n MU_time={mu_elapsed}',
-        xy=(0.68, 0.5), xycoords='axes fraction')
+    # plt.annotate(
+    #     f'PARAMS: \n W_shared={False} \n lr={lr} \n layers={num_layers} \n Train_iter={network_train_iteration} \n Results: \n DNMF_Error={dnmf_err} \n MU_Error={mu_error} \n DNMF_time={dnmf_elapsed} \n MU_time={mu_elapsed}',
+    #     xy=(0.68, 0.5), xycoords='axes fraction')
     plt.show()
