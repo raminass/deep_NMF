@@ -1,5 +1,4 @@
 import time
-
 import numpy as np
 import math
 
@@ -38,7 +37,7 @@ def initialize_exposures(V, n_components, method='random', seed=1984):
     return exposures
 
 
-def frobinuis_reconstruct_error(x, w, h):
+def frobenius_reconstruct_error(x, w, h):
     return np.linalg.norm(x - np.dot(w, h))
 
 
@@ -85,8 +84,13 @@ def sBCD_update(V, W, H, O, obj="kl"):
 
 
 class NMF:
-    def __init__(self, rank=10, **kwargs):
 
+    def __init__(self, rank=10, **kwargs):
+        """
+        manual implementation of multiplicative update to compare external packages
+        :param rank:
+        :param kwargs:
+        """
         self._rank = rank
 
     def initialize_w(self):
@@ -145,7 +149,7 @@ class NMF:
 
             self.update_h()
 
-            self.frob_error[i] = frobinuis_reconstruct_error(self.X, self.W, self.H)
+            self.frob_error[i] = frobenius_reconstruct_error(self.X, self.W, self.H)
         self.elapsed = time.time() - start_iter
 
 

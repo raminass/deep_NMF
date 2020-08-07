@@ -6,6 +6,7 @@ import pandas as pd
 import sklearn.decomposition as sc
 import nimfa as nm
 from nimfa.methods.seeding import nndsvd
+from scipy.optimize import nnls
 
 EPSILON = np.finfo(np.float32).eps
 
@@ -44,8 +45,8 @@ h_0_test = torch.from_numpy(H_init[:, ~mask].T).float()
 
 if __name__ == "__main__":
     # setup params
-    lr = 0.001
-    num_layers = 7
+    lr = 0.002
+    num_layers = 10
     network_train_iteration = 1000
     mu_iter = 50
 
@@ -58,7 +59,7 @@ if __name__ == "__main__":
 
     # build the architicture
     constraints = WeightClipper(lower=0)
-    deep_nmf = RegNet(num_layers, n_components, features)
+    deep_nmf = MultiFrDNMFNet(num_layers, n_components, features)
     dnmf_w = torch.nn.init.uniform_(torch.Tensor(n_components, features), 0, 1)
     # dnmf_w = torch.((n_components, features))
     # dnmf_w = torch.from_numpy(W_0.T).float()
@@ -87,8 +88,18 @@ if __name__ == "__main__":
         deep_nmf.apply(constraints)  # keep wieghts positive after gradient decent
         h_out = torch.transpose(out.data, 0, 1)
         h_out_t = out.data
-        dnmf_w = dnmf_w * (h_out.mm(v_train)).div(h_out.mm(h_out_t).mm(dnmf_w))
+
+        # NNLS 
+        # https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.nnls.html
+        
+        w_arrays = [nnls(out.data.numpy(),V[f, mask])[0] for f in range(features)]
+        nnls_w = np.stack(w_arrays, axis=-1)
+        dnmf_w = torch.from_numpy(nnls_w).float()
+        
+        # dnmf_w = dnmf_w * (h_out.mm(v_train)).div(h_out.mm(h_out_t).mm(dnmf_w))
         loss_values.append(loss.item())
+
+
 
     # test_inputs = (h_0_test, v_test)
     # start_iter = time.time()
@@ -98,8 +109,8 @@ if __name__ == "__main__":
     #     frobinuis_reconstruct_error(V[:, ~mask], dnmf_w.data.numpy().T, netwrok_prediction.data.numpy().T), 2)
     # mu_error = round(frobinuis_reconstruct_error(V[:, ~mask], W, fit.coef()), 2)
 
-    frobinuis_reconstruct_error(V[:, mask], dnmf_w.data.numpy().T, out.data.numpy().T)
-    frobinuis_reconstruct_error(V[:, mask], mu_fit.basis(), mu_fit.coef())
+    frobenius_reconstruct_error(V[:, mask], dnmf_w.data.numpy().T, out.data.numpy().T)
+    frobenius_reconstruct_error(V[:, mask], mu_fit.basis(), mu_fit.coef())
 
     epochs = range(0, network_train_iteration - 1)
     plt.semilogy(mu_training_loss, '-*', label='Training loss mu')
