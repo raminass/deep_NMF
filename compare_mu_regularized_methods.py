@@ -3,7 +3,6 @@ import pandas as pd
 import sklearn.decomposition as sc
 from matplotlib import pyplot as plt
 
-
 EPSILON = np.finfo(np.float32).eps
 
 # Data loading
@@ -32,7 +31,7 @@ for i in range(200):
     denominator = np.dot(W.T.dot(W), H) + EPSILON * C + C * lam
     delta = nominator / denominator
     H *= delta
-    error_hoyer.append(frobenius_reconstruct_error(V, W, H))
+    error_hoyer.append(frobenius_reconstruct_error(V, W, H) + np.linalg.norm((H), ord=1))
 
 print('Hoyer method: ', error_hoyer[-1])
 
@@ -47,13 +46,11 @@ for i in range(200):
     denominator = np.dot(W.T.dot(W), H) + EPSILON * C
     delta = nominator / denominator
     H *= delta
-    our_error.append(frobenius_reconstruct_error(V, W, H))
+    our_error.append(frobenius_reconstruct_error(V, W, H) + np.linalg.norm((H), ord=1))
 
 print('our method: ', our_error[-1])
-
 
 plt.semilogy(error_hoyer, '-*', label='Hoyer')
 plt.semilogy(our_error, '-*', label='Our')
 plt.legend()
 plt.show()
-
