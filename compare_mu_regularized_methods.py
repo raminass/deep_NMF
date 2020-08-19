@@ -19,26 +19,25 @@ n_components = H.shape[0]
 features, samples = V.shape
 
 H_init = initialize_exposures(V, n_components, method="ones")  # (n,k)
+lam = 5
 
 # Hoyer Method L1
 
 H = H_init.copy()
 C = initialize_exposures(V, n_components, method="ones")
-lam = 1.5
 error_hoyer = []
 for i in range(200):
     nominator = np.dot(W.T, V)
     denominator = np.dot(W.T.dot(W), H) + EPSILON * C + C * lam
     delta = nominator / denominator
     H *= delta
-    error_hoyer.append(frobenius_reconstruct_error(V, W, H) + np.linalg.norm((H), ord=1))
+    error_hoyer.append(frobenius_reconstruct_error(V, W, H) + lam * np.linalg.norm((H), ord=1))
 
 print('Hoyer method: ', error_hoyer[-1])
 
 # Our method
 H = H_init.copy()
 C = initialize_exposures(V, n_components, method="ones")
-lam = 1.5
 our_error = []
 
 for i in range(200):
@@ -46,7 +45,7 @@ for i in range(200):
     denominator = np.dot(W.T.dot(W), H) + EPSILON * C
     delta = nominator / denominator
     H *= delta
-    our_error.append(frobenius_reconstruct_error(V, W, H) + np.linalg.norm((H), ord=1))
+    our_error.append(frobenius_reconstruct_error(V, W, H) + lam * np.linalg.norm((H), ord=1))
 
 print('our method: ', our_error[-1])
 

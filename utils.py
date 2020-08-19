@@ -3,6 +3,7 @@ import numpy as np
 import math
 
 inf = math.inf
+EPSILON = np.finfo(np.float32).eps
 
 
 class WeightClipper(object):
@@ -39,6 +40,11 @@ def initialize_exposures(V, n_components, method='random', seed=1984):
 
 def frobenius_reconstruct_error(x, w, h):
     return np.linalg.norm(x - np.dot(w, h))
+
+
+def cost_function(v, w, h, l_1, l_2):
+    d = (v - np.dot(w, h))
+    return 0.5 * np.power(d, 2).sum() + l_1 * h.sum() + 0.5 * l_2 * np.power(h, 2).sum()
 
 
 def kl_reconstruct_error(x, w, h):
@@ -80,6 +86,26 @@ def sBCD_update(V, W, H, O, obj="kl"):
         )
         E = np.subtract(V_k, np.dot(W[:, k].reshape((n, 1)), H[k, :].reshape((1, m))))
 
+    return W, H
+
+
+def mu_update(V, W, H, l_1, l_2, update_H=True, update_W=True):
+    # vectorizing the constant
+    n_components = H.shape[0]
+
+    # update W
+    if update_W:
+        W_nominator = np.dot(V, H.T)
+        W_denominator = np.dot(W, np.dot(H, H.T)) + EPSILON
+        delta = W_nominator / W_denominator
+        W *= delta
+
+    # update H
+    if update_H:
+        H_nominator = np.dot(W.T, V) -  l_1
+        H_denominator = np.dot(W.T.dot(W), H) + EPSILON + H * l_2
+        delta = H_nominator / H_denominator
+        H *= delta
     return W, H
 
 

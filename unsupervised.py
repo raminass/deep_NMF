@@ -123,3 +123,4 @@ if __name__ == "__main__":
     #     f'PARAMS: \n W_shared={False} \n lr={lr} \n layers={num_layers} \n Train_iter={network_train_iteration} \n Results: \n DNMF_Error={dnmf_err} \n MU_Error={mu_error} \n DNMF_time={dnmf_elapsed} \n MU_time={mu_elapsed}',
     #     xy=(0.68, 0.5), xycoords='axes fraction')
     plt.show()
+

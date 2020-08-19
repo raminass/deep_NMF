@@ -73,16 +73,17 @@ class RegLayer(nn.Module):
     This can fit L1, L2 regularization.
     """
 
-    def __init__(self, comp, features):
+    def __init__(self, comp, features, l_1, l_2):
         super(RegLayer, self).__init__()
         # an affine operation: y = Wx +b
-        self.fc1 = nn.Linear(comp, comp, bias=True)  # bias in denominator
+        self.l_1 = l_1
+        self.l_2 = l_2
+        self.fc1 = nn.Linear(comp, comp, bias=False)
         self.fc2 = nn.Linear(features, comp, bias=False)
 
     def forward(self, y, x):
-        denominator = self.fc1(y)
-        numerator = self.fc2(x)
-        denominator[denominator == 0] = EPSILON
+        denominator = torch.add(self.fc1(y), self.l_2 * y + EPSILON)
+        numerator = torch.add(self.fc2(x), -self.l_1)
         delta = torch.div(numerator, denominator)
         return torch.mul(delta, y)
 
@@ -97,11 +98,11 @@ class RegNet(nn.Module):
     each layer is MU of Frobenius norm
     """
 
-    def __init__(self, n_layers, comp, features):
+    def __init__(self, n_layers, comp, features, l_1, l_2):
         super(RegNet, self).__init__()
         self.n_layers = n_layers
         self.deep_nmfs = nn.ModuleList(
-            [RegLayer(comp, features) for i in range(self.n_layers)]
+            [RegLayer(comp, features, l_1, l_2) for i in range(self.n_layers)]
         )
 
     def forward(self, h, x):
@@ -183,7 +184,6 @@ class MultiBetaDNMFNet(nn.Module):
         for i, l in enumerate(self.deep_nmfs):
             h = l(h, x)
         return h
-
 
 # ============================== Unsupervised Net =================================
 
