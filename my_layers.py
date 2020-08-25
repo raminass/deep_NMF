@@ -4,18 +4,6 @@ import torch.nn as nn
 EPSILON = torch.finfo(torch.float32).eps
 
 
-class WeightClipper(object):
-    def __init__(self, frequency=5):
-        self.frequency = frequency
-
-    def __call__(self, module):
-        # filter the variables to get the ones you want
-        if hasattr(module, "weight"):
-            w = module.weight.data
-            w = w.clamp(min=0)
-            module.weight.data = w
-
-
 # ============================ Basic Net ===============================
 class FrNMFLayer(nn.Module):
     """

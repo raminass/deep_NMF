@@ -38,13 +38,9 @@ def initialize_exposures(V, n_components, method='random', seed=1984):
     return exposures
 
 
-def frobenius_reconstruct_error(x, w, h):
-    return np.linalg.norm(x - np.dot(w, h))
-
-
-def cost_function(v, w, h, l_1, l_2):
+def cost_function(v, w, h, l_1=0, l_2=0):
     d = (v - np.dot(w, h))
-    return 0.5 * np.power(d, 2).sum() + l_1 * h.sum() + 0.5 * l_2 * np.power(h, 2).sum()
+    return 0.5 * np.power(d, 2).sum() + l_1 * np.abs(h).sum() + 0.5 * l_2 * np.power(h, 2).sum()
 
 
 def kl_reconstruct_error(x, w, h):
@@ -90,9 +86,6 @@ def sBCD_update(V, W, H, O, obj="kl"):
 
 
 def mu_update(V, W, H, l_1, l_2, update_H=True, update_W=True):
-    # vectorizing the constant
-    n_components = H.shape[0]
-
     # update W
     if update_W:
         W_nominator = np.dot(V, H.T)
@@ -102,88 +95,8 @@ def mu_update(V, W, H, l_1, l_2, update_H=True, update_W=True):
 
     # update H
     if update_H:
-        H_nominator = np.dot(W.T, V) -  l_1
+        H_nominator = np.dot(W.T, V) - l_1
         H_denominator = np.dot(W.T.dot(W), H) + EPSILON + H * l_2
         delta = H_nominator / H_denominator
         H *= delta
     return W, H
-
-
-class NMF:
-
-    def __init__(self, rank=10, **kwargs):
-        """
-        manual implementation of multiplicative update to compare external packages
-        :param rank:
-        :param kwargs:
-        """
-        self._rank = rank
-
-    def initialize_w(self):
-        """ Initalize W to random values [0,1]."""
-
-        self.W = np.random.random((self.X_dim, self._rank))
-
-    def initialize_h(self):
-        """ Initalize H to random values [0,1]."""
-
-        self.H = np.random.random((self._rank, self._samples))
-        self.H_init = self.H.copy()
-
-    def check_non_negativity(self):
-
-        if self.X.min() < 0:
-            return 0
-        else:
-            return 1
-
-    def update_h(self):
-
-        XtW = np.dot(self.W.T, self.X)
-        HWtW = np.dot(self.W.T.dot(self.W), self.H) + 2 ** -8
-        self.H *= XtW
-        self.H /= HWtW
-
-    def update_w(self):
-
-        XH = self.X.dot(self.H.T)
-        WHtH = self.W.dot(self.H.dot(self.H.T)) + 2 ** -8
-        self.W *= XH
-        self.W /= WHtH
-
-    def compute_factors(self, X, max_iter=100, update_W=True, update_H=True):
-        self.X = X
-        self.X_dim, self._samples = self.X.shape
-
-        if self.check_non_negativity():
-            pass
-        else:
-            print("The given matrix contains negative values")
-            exit()
-
-        if not hasattr(self, "W") and update_W:
-            self.initialize_w()
-
-        if not hasattr(self, "H") or update_H:
-            self.initialize_h()
-
-        self.frob_error = np.zeros(max_iter)
-        start_iter = time.time()
-        for i in range(max_iter):
-            if update_W:
-                self.update_w()
-
-            self.update_h()
-
-            self.frob_error[i] = frobenius_reconstruct_error(self.X, self.W, self.H)
-        self.elapsed = time.time() - start_iter
-
-
-if __name__ == "__main__":
-    # X = np.random.random((10, 10))
-    X = np.load("data/synthetic_data/x.syn.many.types.0.5_sp.sp.npy")
-    nmf = NMF(rank=21)
-    nmf.compute_factors(X, 200)
-    print(nmf.W.shape, nmf.H.shape)
-    print(nmf.frob_error)
-    print(nmf.elapsed)

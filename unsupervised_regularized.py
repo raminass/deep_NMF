@@ -28,7 +28,7 @@ V = category_df.iloc[:, 2:].values  # (f,n)
 n_components = H.shape[0]
 features, samples = V.shape
 
-l_1 = 0
+l_1 = 3
 l_2 = 0
 
 # split train/test
