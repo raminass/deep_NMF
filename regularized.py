@@ -7,9 +7,8 @@ import sklearn.decomposition as sc
 from nimfa.methods.seeding import nndsvd
 
 """
-here we added a bias to the denominator so it can reflect the regularization
+here we support L1,L2 regularization on H
 """
-EPSILON = np.finfo(np.float32).eps
 
 # Data loading
 signatures_df = pd.read_csv('data/simulated/ground.truth.syn.sigs.csv', sep=',')

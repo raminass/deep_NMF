@@ -28,7 +28,7 @@ V = category_df.iloc[:, 2:].values  # (f,n)
 n_components = H.shape[0]
 features, samples = V.shape
 
-l_1 = 3
+l_1 = 0
 l_2 = 0
 
 # split train/test
@@ -52,7 +52,7 @@ h_0_test = torch.from_numpy(H_init[:, ~mask].T).float()
 
 if __name__ == "__main__":
     # setup params
-    lr = 0.004  # for network GD
+    lr = 0.0008  # for network GD
     num_layers = 12
     network_train_iteration = 400
     mu_iter = 400
