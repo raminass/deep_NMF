@@ -10,6 +10,8 @@ article: chrome-extension://bomfdkbfpdhijjbeoicnfhjbdhncfhig/view.html?mp=7cLxK1
 """
 
 # %%
+from plotly.subplots import make_subplots
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import scipy as sp
@@ -26,6 +28,8 @@ import plotly.express as px
 from network_random import *
 import os
 from collections import defaultdict
+%matplotlib inline
+plt.style.use('seaborn-white')
 
 %load_ext autoreload
 %autoreload 2
@@ -81,10 +85,8 @@ def read_network(network_filename):
 def generate_similarity_matrix(network):
     genes = sorted(network.nodes)
     matrix = nx.to_scipy_sparse_matrix(network, genes, weight=2)
-
     norm_matrix = sp.sparse.diags(1 / sp.sqrt(matrix.sum(0).A1), format="csr")
     matrix = norm_matrix * matrix * norm_matrix
-
     return PROPAGATE_ALPHA * matrix, genes
 
 
@@ -205,14 +207,14 @@ for index, row in ongoing_data.iterrows():
     runs = []
     # calculate the score of viral gene
     sources = interactions[interactions["viral"].str.lower() == row["viral"]]["entrezgene"].to_list()
-    score = sum([sum(v[target_index])for k, v in gene_scores.items() if k in sources]) / len(sources)
+    score = sum([sum(v[target_index])for k, v in gene_scores.items() if k in sources])
     runs.append(score)
     viral_scores.append(score)
 
     # generate 100 random scores
     for i in range(100):
         random_sources = random.sample(population=list(g.nodes), k=len(sources))
-        score = sum([sum(v[target_index]) for k, v in gene_scores.items() if k in random_sources]) / len(sources)
+        score = sum([sum(v[target_index]) for k, v in gene_scores.items() if k in random_sources])
         runs.append(score)
 
     pvalue = (102 - sp.stats.rankdata(runs, method="ordinal")[0]) / 101
@@ -229,12 +231,12 @@ for index, row in ongoing_data.iterrows():
     runs = []
     # calculate the score of viral gene
     sources = interactions[interactions["viral"].str.lower() == row["viral"]]["entrezgene"].to_list()
-    score = sum([sum(v[target_index]) for k, v in gene_scores.items() if k in sources]) / len(sources)
+    score = sum([sum(v[target_index]) for k, v in gene_scores.items() if k in sources])
     runs.append(score)
 
     # generate 100 random scores by 100 random networks
     for net, prop in random_networks.items():
-        score = sum([sum(v[target_index]) for k, v in prop.items() if k in sources]) / len(sources)
+        score = sum([sum(v[target_index]) for k, v in prop.items() if k in sources])
         runs.append(score)
 
     pvalue = (102 - sp.stats.rankdata(runs, method="ordinal")[0]) / 101
@@ -278,12 +280,23 @@ ongoing_data["adjusted_pvalue_random_source_same_degree"] = sm.stats.multipletes
 # calculate score by target
 for tar_id, name in zip(target, target_names):
     target_score = []
+    viral_p_values = []
     for index, row in ongoing_data.iterrows():
+        runs = []
         # calculate the score of viral gene
         sources = interactions[interactions["viral"].str.lower() == row["viral"]]["entrezgene"].to_list()
         score = sum([v[gene_indexes[tar_id]] for k, v in gene_scores.items() if k in sources]) / len(sources)
+        runs.append(score)
         target_score.append(score)
+        # generate 100 random scores
+        for i in range(100):
+            random_sources = random.sample(population=list(g.nodes), k=len(sources))
+            score = sum([v[gene_indexes[tar_id]] for k, v in gene_scores.items() if k in random_sources]) / len(sources)
+            runs.append(score)
+        pvalue = (102 - sp.stats.rankdata(runs, method="ordinal")[0]) / 101
+        viral_p_values.append(pvalue)
     ongoing_data[name + "_score"] = target_score
+    ongoing_data[name + "_pvalue"] = viral_p_values
 
 # %%
 # Plots
@@ -340,38 +353,31 @@ fig.update_layout(
     yaxis_title="Viral Protiens",)
 fig.show()
 
+
+# correlation of number of adj-pvalue Cadherin_5
+correlation_7 = round(sp.stats.pearsonr(ongoing_data["Cadherin-5_score"], ongoing_data["perm_3_days"])[0], 4)
+fig = px.scatter(ongoing_data, x="Cadherin-5_score", y="perm_3_days", text="viral")
+fig.update_traces(textposition="top center")
+fig.update_layout(height=800, title_text=f"""Cadherin-5_score Vs Permeability, Pearson={correlation_7}""")
+fig.show()
+
+
 # %%
-# heatmap of effects
-# viral_protiens = ongoing_data["viral"].tolist()
-# vascular_protiens = target_names
+titles = []
+for title in target_names:
+    corr_temp = round(sp.stats.pearsonr(ongoing_data[title + "_pvalue"], ongoing_data["perm_3_days"])[0], 4)
+    titles.append(title + f", r={corr_temp}")
 
-# vascular = []
-# for index, row in ongoing_data.iterrows():
-#     # calculate the score of viral gene
-#     sources = interactions[interactions["viral"].str.lower(
-#     ) == row["viral"]]["entrezgene"].to_list()
-#     score = sum([v[target_index] for k, v in gene_scores.items() if k in sources])/len(sources)
-#     vascular.append(score)
+fig = make_subplots(rows=4, cols=3, start_cell="top-left",
+                    subplot_titles=(titles))
 
-# # effects = np.array(vascular)
-# effects = ongoing_data[[i + "_score" for i in target_names]].to_numpy()
+for i, name in enumerate(target_names):
+    fig.add_trace(go.Scatter(x=ongoing_data[name + "_pvalue"], y=ongoing_data["perm_3_days"],
+                             text=ongoing_data["viral"], mode='markers'),
+                  row=int(i/3)+1, col=i-int(i/3)*3+1)
 
-# trace = go.Heatmap(x=vascular_protiens, y=viral_protiens,
-#                    z=effects, type="heatmap", colorscale="Viridis")
-# data = [trace]
-# fig = go.Figure(data=data)
-# fig.update_xaxes(side="top")
-# fig.update_layout(
-#     showlegend=False,
-#     width=1000,
-#     height=1200,
-#     autosize=True,
-#     xaxis_title="Vascular Proteins",
-#     yaxis_title="Viral Protiens",
-# )
-# fig.show()
-
-
+fig.update_layout(height=800, width=800, showlegend=False, title_text="Correlation by Vascular Protein")
+fig.show()
 # %%
 #  multiple regression
 print('muli-regression permeability')
