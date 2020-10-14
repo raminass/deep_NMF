@@ -378,6 +378,7 @@ for i, name in enumerate(target_names):
 
 fig.update_layout(height=800, width=800, showlegend=False, title_text="Correlation by Vascular Protein")
 fig.show()
+
 # %%
 #  multiple regression
 print('muli-regression permeability')

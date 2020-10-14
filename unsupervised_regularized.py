@@ -98,7 +98,7 @@ if __name__ == "__main__":
         # NNLS
         # https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.nnls.html
 
-        w_arrays = [nnls(out.data.numpy(), V[f, mask])[0] for f in range(features)]
+        w_arrays = [nnls(out.data.numpy(), data.v_train.mat.T[f])[0] for f in range(features)]
         nnls_w = np.stack(w_arrays, axis=-1)
         dnmf_w = torch.from_numpy(nnls_w).float()
 
