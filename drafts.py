@@ -311,3 +311,101 @@ class UnsuperNet(nn.Module):
         for i, l in enumerate(self.deep_nmfs):
             h = l(h, x)
         return h
+
+
+def initialize_exposures(V, n_components, method="random", seed=1984):
+    """
+    Average :
+    this is initialization of w matrix as in scikiit transform method
+    https://scikit-learn.org/stable/modules/generated/sklearn.decomposition.NMF.html#sklearn.decomposition.NMF.transform
+    """
+    n_features, n_samples = V.shape
+    avg = np.sqrt(V.mean() / n_components)
+    rng = np.random.RandomState(seed)
+
+    if method == "random":
+        exposures = avg * rng.rand(n_components, n_samples)
+    elif method == "ones":
+        exposures = np.ones((n_components, n_samples))
+    elif method == "average":
+        exposures = np.full((n_components, n_samples), avg)
+    return exposures
+
+
+def sBCD_update(V, W, H, O, obj="kl"):
+    """
+    Fast beta-divergence update, using: Fast Bregman Divergence NMF using Taylor Expansion and Coordinate Descent, Li 2012
+    O parameter is a masking matrix, for cross-validation purposes, pass O=1
+    """
+    n, m = V.shape
+    K = W.shape[1]
+    V_tag = np.dot(W, H)
+    E = np.subtract(V, V_tag)
+
+    if obj == "kl":
+        B = np.divide(1, V_tag) * O
+    elif obj == "euc":
+        B = np.ones((V.shape)) * O
+    else:  # obj == 'is' Itakura-Saito
+        B = np.divide(1, V_tag ** 2) * O
+
+    for k in range(K):
+        V_k = np.add(E, np.dot(W[:, k].reshape((n, 1)), H[k, :].reshape((1, m))))
+        B_V_k = B * V_k
+        # update H
+        H[k] = np.maximum(
+            1e-16, (np.dot(B_V_k.T, W[:, k])) / (np.dot(B.T, W[:, k] ** 2))
+        )
+        # update W
+        W[:, k] = np.maximum(
+            1e-16, (np.dot(B_V_k, H[k])) / (W[:, k] + np.dot(B, H[k] ** 2))
+        )
+        E = np.subtract(V_k, np.dot(W[:, k].reshape((n, 1)), H[k, :].reshape((1, m))))
+
+    return W, H
+
+
+def build_data_unsupervised(V, sigs, init_method="ones", TRAIN_SIZE=0.80):
+    # create a dataclass object that includes all necessary datasets to train a model
+    n_components = sigs
+    features, samples = V.shape
+    # split train/test
+    TRAIN_SIZE = 0.80
+    mask = np.random.rand(samples) < TRAIN_SIZE
+
+    if init_method != "ones":
+        W_init, H_init = init_nmf(V, n_components, init=init_method)
+    else:
+        H_init = np.ones((n_components, samples))
+        W_init = np.ones((features, n_components))
+
+    data = Alldata(
+        v_train=Matensor(V[:, mask], tensoring(V[:, mask].T)),
+        v_test=Matensor(V[:, ~mask], tensoring(V[:, ~mask].T)),
+        h_train=Matensor(H_init[:, mask], tensoring(H_init[:, mask].T)),
+        h_test=Matensor(H_init[:, ~mask], tensoring(H_init[:, ~mask].T)),
+        h_0_train=Matensor(H_init[:, mask], tensoring(H_init[:, mask].T)),
+        h_0_test=Matensor(H_init[:, ~mask], tensoring(H_init[:, ~mask].T)),
+        w=Matensor(W_init, tensoring(W_init.T)),
+        w_init=Matensor(W_init, tensoring(W_init.T)),
+    )
+    return data, n_components, features, samples
+
+
+# plt.rcParams['figure.figsize'] = (10.0, 8.0) # set default size of plots
+
+# fig = plt.figure()
+# ax = fig.add_subplot(111)
+# bp_dict = ax.boxplot(np.log(df1[['super_reg','super_no_reg']].values),labels=['Regularized','Not-Regularized'],vert=True)
+
+# for line in bp_dict['medians']:
+#     # get position data for median line
+#     x, y = line.get_xydata()[1] # top of median line
+#     # overlay median value
+#     text(x, y, '%.1f' % y,
+#          verticalalignment='center') # draw above, centered
+# ax.set_title('Supervised')
+# ax.set_xlabel('Variant')
+# ax.set_ylabel('$\log({MSE})$')
+# plt.savefig('plots/figures/compare_reg_super.pdf')
+# plt.show()

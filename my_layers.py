@@ -102,3 +102,48 @@ class UnsuperNet(nn.Module):
         for i, l in enumerate(self.deep_nmfs):
             h = l(h, x)
         return h
+
+# ================================ supervised Net ======================================
+class SuperLayer_reg(nn.Module):
+    """
+    Multiplicative update with Frobenius norm
+    This can fit L1, L2 regularization.
+    """
+
+    def __init__(self, comp, features):
+        super(SuperLayer_reg, self).__init__()
+        self.l_1 = nn.Parameter(torch.ones(1), requires_grad=True)
+        self.l_2 = nn.Parameter(torch.ones(1), requires_grad=True)
+        # an affine operation: y = Wx +b
+        self.fc1 = nn.Linear(comp, comp, bias=False)
+        self.fc2 = nn.Linear(features, comp, bias=False)
+
+    def forward(self, y, x):
+        denominator = torch.add(self.fc1(y), self.l_2 * y + self.l_1 + EPSILON)
+        numerator = self.fc2(x)
+        delta = torch.div(numerator, denominator)
+        return torch.mul(delta, y)
+
+
+class SuperNet_new(nn.Module):
+    """
+    Class for a Regularized DNMF with varying layers number.
+    Input:
+        -n_layers = number of layers to construct the Net
+        -comp = number of components for factorization
+        -features = original features length for each sample vector(mutational sites)
+    each layer is MU of Frobenius norm
+    """
+
+    def __init__(self, n_layers, comp, features):
+        super(SuperNet_new, self).__init__()
+        self.n_layers = n_layers
+        self.deep_nmfs = nn.ModuleList(
+            [SuperLayer_reg(comp, features) for i in range(self.n_layers)]
+        )
+
+    def forward(self, h, x):
+        # sequencing the layers and forward pass through the network
+        for i, l in enumerate(self.deep_nmfs):
+            h = l(h, x)
+        return h
