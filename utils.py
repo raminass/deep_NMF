@@ -140,7 +140,7 @@ def train_supervised(
     # build the architicture
     deep_nmf = SuperNet(num_layers, n_components, features, L1, L2)
     for w in deep_nmf.parameters():
-        w.data.fill_(1.0)
+        w.data.fill_(0.1)
     criterion = nn.MSELoss(reduction="mean")
     test_cret = nn.MSELoss(reduction="sum")
     optimizerADAM = optim.Adam(deep_nmf.parameters(), lr=lr)
@@ -170,7 +170,7 @@ def train_supervised(
         # test performance
         # MSE Loss, ((x - y)**2).sum()
         test_out = deep_nmf(*test_input)
-        test_loss.append((test_cret(test_out, data.h_test.tns)/test_out.shape[0]).item())
+        test_loss.append((test_cret(test_out, data.h_test.tns)).item())
     return deep_nmf, loss_values, test_loss
 
 
@@ -233,7 +233,7 @@ def train_unsupervised(
         dnmf_train_cost.append(loss.item())
 
         # test performance
-        dnmf_test_cost.append(cost_tns(data.v_test.tns, dnmf_w, test_out,l_1, l_2).item())
+        dnmf_test_cost.append(cost_tns(data.v_test.tns, dnmf_w, test_out).item())
 
     return deep_nmf, dnmf_train_cost, dnmf_test_cost, dnmf_w
 
