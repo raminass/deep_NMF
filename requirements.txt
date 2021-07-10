@@ -8,7 +8,7 @@ autopep8==1.5.4
 backcall==0.1.0
 biothings-client==0.2.3
 black==19.10b0
-bleach==3.2.1
+bleach==3.3.0
 cachetools==4.1.0
 certifi==2020.4.5.2
 cffi==1.14.2
