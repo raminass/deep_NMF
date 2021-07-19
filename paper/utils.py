@@ -1,9 +1,11 @@
 import time
 import numpy as np
+import pandas as pd
+import utils as util
 import math
 from dataclasses import dataclass
 import torch
-from my_layers import UnsuperNet,SuperNet,SuperNet_new, UnsuperNetOpt3
+from my_layers import *
 import torch.nn as nn
 import torch.optim as optim
 from scipy.optimize import nnls
@@ -361,7 +363,7 @@ def train_reg_var(
         test_loss.append((test_cret(test_out, data.h_test.tns)/test_out.shape[0]).item())
     return deep_nmf, loss_values, test_loss
 
-def train_unsupervised_opt3(
+def train_unsupervised_opt1(
     data: Alldata,
     num_layers,
     network_train_iterations,
@@ -377,9 +379,9 @@ def train_unsupervised_opt3(
     features = v_train.shape[1]
     # build the architicture
     if include_reg:
-        deep_nmf = UnsuperNetOpt3(num_layers, n_components, features, l_1, l_2)
+        deep_nmf = UnsuperNetOpt1(num_layers, n_components, features, l_1, l_2)
     else:
-        deep_nmf = UnsuperNetOpt3(num_layers, n_components, features, 0, 0)
+        deep_nmf = UnsuperNetOpt1(num_layers, n_components, features, 0, 0)
     # initialize parameters
     dnmf_w = data.w_init.tns
     for w in deep_nmf.parameters():
@@ -387,15 +389,15 @@ def train_unsupervised_opt3(
 
     optimizerADAM = optim.Adam(deep_nmf.parameters(), lr=lr)
      # Train the Network
-    inputs = (h_0_train, v_train, dnmf_w)
-    test = (data.h_0_test.tns, data.v_test.tns, dnmf_w)
+    inputs = (h_0_train, v_train)
+    # test = (data.h_0_test.tns, data.v_test.tns, dnmf_w)
     dnmf_train_cost = []
     dnmf_test_cost = []
     for i in range(network_train_iterations):
         out = deep_nmf(*inputs)
-        test_out = deep_nmf(*test)
+        # test_out = deep_nmf(*test)
 
-        loss = cost_tns(v_train, out[1], out[0], l_1, l_2)
+        loss = cost_tns(v_train, deep_nmf.W, out, l_1, l_2)
         
         if verbose:
             print(i, loss.item())
@@ -414,6 +416,64 @@ def train_unsupervised_opt3(
         dnmf_train_cost.append(loss.item())
 
         # test performance
-        dnmf_test_cost.append(cost_tns(data.v_test.tns, out[1], test_out[0],l_1, l_2).item())
+        # dnmf_test_cost.append(cost_tns(data.v_test.tns, out[1], test_out[0],l_1, l_2).item())
+
+    return deep_nmf, dnmf_train_cost, dnmf_test_cost, dnmf_w
+
+
+def train_unsupervised_opt2(
+    data: Alldata,
+    num_layers,
+    network_train_iterations,
+    n_components,
+    verbose=False,
+    lr=0.0005,
+    l_1=0,
+    l_2=0,
+    include_reg = True
+):
+    v_train = data.v_train.tns
+    h_0_train = data.h_0_train.tns
+    features = v_train.shape[1]
+    # build the architicture
+    if include_reg:
+        deep_nmf = UnsuperNet(num_layers, n_components, features, l_1, l_2)
+    else:
+        deep_nmf = UnsuperNet(num_layers, n_components, features, 0, 0)
+    # initialize parameters
+    dnmf_w = data.w_init.tns
+    for w in deep_nmf.parameters():
+        w.data.fill_(0.1)
+
+    optimizerADAM = optim.Adam(deep_nmf.parameters(), lr=lr)
+     # Train the Network
+    inputs = (h_0_train, v_train)
+    # test = (data.h_0_test.tns, data.v_test.tns, dnmf_w)
+    dnmf_train_cost = []
+    dnmf_test_cost = []
+    for i in range(network_train_iterations):
+        out = deep_nmf(*inputs)
+        # test_out = deep_nmf(*test)
+
+        loss = cost_tns(v_train, deep_nmf.W, out, l_1, l_2)
+        
+        if verbose:
+            print(i, loss.item())
+
+        optimizerADAM.zero_grad()
+        loss.backward()
+        optimizerADAM.step()
+
+        # keep weights positive after gradient decent
+        for w in deep_nmf.parameters():
+            w.data = w.clamp(min=0,max=inf)
+        # h_out = torch.transpose(out.data, 0, 1)
+        # h_out_t = out.data
+
+        
+        dnmf_train_cost.append(loss.item())
+
+        # test performance
+        # dnmf_test_cost.append(cost_tns(data.v_test.tns, out[1], test_out[0],l_1, l_2).item())
 
     return deep_nmf, dnmf_train_cost, dnmf_test_cost, dnmf_w

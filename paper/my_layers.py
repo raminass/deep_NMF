@@ -123,7 +123,7 @@ class UnsuperNet(nn.Module):
             h = l(h, x)
         return h
 
-class UnsuperNetOpt3(nn.Module):
+class UnsuperNetOpt1(nn.Module):
     """
     Class for a Regularized DNMF with varying layers number.
     Input:
@@ -134,23 +134,18 @@ class UnsuperNetOpt3(nn.Module):
     """
 
     def __init__(self, n_layers, comp, features, l_1=0, l_2=0):
-        super(UnsuperNetOpt3, self).__init__()
+        super(UnsuperNetOpt1, self).__init__()
+        self.W = nn.Parameter(torch.ones(comp,features), requires_grad=True)
         self.n_layers = n_layers
         self.deep_nmfs = nn.ModuleList(
             [UnsuperLayer(comp, features, l_1, l_2) for i in range(self.n_layers)]
         )
 
-    def forward(self, h, x, w):
+    def forward(self, h, x):
         # sequencing the layers and forward pass through the network
         for i, l in enumerate(self.deep_nmfs):
             h = l(h, x)
-            # print(f'size of w:{w.size()}, size of H:{h.size()}')
-            denominator = torch.matmul(torch.matmul(torch.t(h),h),w)
-            numerator = torch.matmul(torch.t(h), x)
-            delta = torch.div(numerator, denominator)
-            w = torch.mul(delta, w)
-        return h, w
-
+        return h
 
 # ================================ supervised Net ======================================
 class SuperLayer_reg(nn.Module):
