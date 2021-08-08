@@ -177,6 +177,57 @@ def train_supervised(
         test_loss.append((test_cret(test_out, data.h_test.tns)/test_out.shape[0]).item())
     return deep_nmf, loss_values, test_loss
 
+def train_supervised_w(
+    data: Alldata,
+    num_layers,
+    network_train_iterations,
+    L1,
+    L2,
+    verbose=False,
+    lr=0.001,
+):
+    v_train = data.v_train.tns
+    # h_train = data.h_train.tns
+    h_0_train = data.h_0_train.tns
+    w_train = data.w.tns
+
+    n_components = w_train.shape[0]
+    features = v_train.shape[1]
+    # build the architicture
+    deep_nmf = SuperNet(num_layers, n_components, features, L1, L2)
+    for w in deep_nmf.parameters():
+        w.data.fill_(1.0)
+    criterion = nn.MSELoss(reduction="mean")
+    test_cret = nn.MSELoss(reduction="sum")
+    optimizerADAM = optim.Adam(deep_nmf.parameters(), lr=lr)
+    
+    # Train the Network
+    inputs = (h_0_train, v_train)
+    test_input = (data.h_0_test.tns, data.v_test.tns)
+    loss_values = []
+    test_loss = []
+    for i in range(network_train_iterations):
+        out = deep_nmf(*inputs)
+        loss = criterion(v_train, out.mm(w_train))  # loss between predicted and truth
+        # loss = criterion(out.mm(W_tensor), v_train) # reconstruction loss
+
+        if verbose:
+            print(i, loss.item())
+
+        optimizerADAM.zero_grad()
+        loss.backward()
+        optimizerADAM.step()
+
+        # deep_nmf.apply(constraints)  # keep wieghts positive after gradient decent
+        for w in deep_nmf.parameters():
+            w.data = w.clamp(min=0,max=inf)
+        loss_values.append(loss.item())
+
+        # test performance
+        # MSE Loss, ((x - y)**2).sum()
+        test_out = deep_nmf(*test_input)
+        test_loss.append((test_cret(data.v_test.tns, test_out.mm(w_train))).item())
+    return deep_nmf, loss_values, test_loss
 
 def train_unsupervised(
     data: Alldata,
