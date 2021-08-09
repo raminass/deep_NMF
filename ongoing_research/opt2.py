@@ -36,21 +36,21 @@ for k in range(1, 2):
             _, opt2_error, _, _ = util.train_unsupervised_opt2(
                 data, layers, n_iter, n_components, l_1=L1, l_2=L2
             )
-            ###### MU ################
-            # train
-            h_mu = data.h_0_train.mat.copy()  # k*n
-            w_mu = data.w_init.mat.copy()  # f*k
-            for i in range(n_iter):
-                w_mu, h_mu = util.mu_update(
-                    data.v_train.mat, w_mu, h_mu, l_1=L1, l_2=L2)
-            # test
-            mu_test_iter = 10
-            h_mu_test = data.h_0_test.mat.copy()
-            for i in range(mu_test_iter):
-                _, h_mu_test = util.mu_update(
-                    data.v_test.mat, w_mu, h_mu_test, update_W=False
-                )
-            mu_error = util.cost_mat(data.v_train.mat, w_mu, h_mu)
+            # ###### MU ################
+            # # train
+            # h_mu = data.h_0_train.mat.copy()  # k*n
+            # w_mu = data.w_init.mat.copy()  # f*k
+            # for i in range(n_iter):
+            #     w_mu, h_mu = util.mu_update(
+            #         data.v_train.mat, w_mu, h_mu, l_1=L1, l_2=L2)
+            # # test
+            # mu_test_iter = 10
+            # h_mu_test = data.h_0_test.mat.copy()
+            # for i in range(mu_test_iter):
+            #     _, h_mu_test = util.mu_update(
+            #         data.v_test.mat, w_mu, h_mu_test, update_W=False
+            #     )
+            # mu_error = util.cost_mat(data.v_train.mat, w_mu, h_mu)
 
             lst[f"dnmf_{lam}"].append(dnmf_error[-1])
             lst[f"opt2_{lam}"].append(opt2_error[-1])
