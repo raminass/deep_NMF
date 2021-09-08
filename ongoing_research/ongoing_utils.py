@@ -48,14 +48,19 @@ def cost_tns(v, w, h, l_1=0, l_2=0):
     )/h.shape[0]
 
 
-def kl_reconstruct_error(x, w, h):
-    a = x
-    b = w.dot(h)
-    return np.sum(
-        np.where(a != 0, np.where(b != 0, a * np.log(a / b) - a + b, 0), 0)
-    )  # from wp, zeros aren't counted
+def kl_reconstruct_error(x, w, h, l_1=0, l_2=0):
+    a = x + EPSILON
+    b = w.dot(h) + EPSILON
+    # from wp, zeros aren't counted
+    kl = np.sum(a * np.log(a / b) - a + b) 
+    return kl +  l_1 * h.sum() + 0.5 * l_2 * np.power(h, 2).sum()
     # np.sqrt(2*np.sum(np.where(a != 0, np.where(b != 0, a * np.log(a / b) - a + b, 0), 0))) at Scikit, incorrect imo
 
+def kl_reconstruct_error_tns(x, w, h, l_1=0, l_2=0):
+    a = x + torch.finfo(torch.float32).eps
+    b = h.mm(w) + torch.finfo(torch.float32).eps
+    kl = torch.sum(a * torch.log(a / b) - a + b) 
+    return kl + l_1 * h.sum() + 0.5 * l_2 * torch.pow(h, 2).sum()
 
 def mu_update(V, W, H, l_1=0, l_2=0, update_H=True, update_W=True):
     # update W
@@ -69,6 +74,22 @@ def mu_update(V, W, H, l_1=0, l_2=0, update_H=True, update_W=True):
     if update_H:
         H_nominator = np.dot(W.T, V)
         H_denominator = np.dot(W.T.dot(W), H) + EPSILON + H * l_2 + l_1
+        delta = H_nominator / H_denominator
+        H *= delta
+    return W, H
+
+def mu_update_kl(V, W, H, l_1=0, l_2=0, update_H=True, update_W=True):
+    # update W
+    if update_W:
+        W_nominator = np.dot(V / (W.dot(H) + EPSILON), H.T)
+        W_denominator = np.dot(np.ones(V.shape), H.T) + EPSILON
+        delta = W_nominator / W_denominator
+        W *= delta
+
+    # update H
+    if update_H:
+        H_nominator = np.dot(W.T, V / (W.dot(H) + EPSILON))
+        H_denominator = np.dot(W.T, np.ones(V.shape)) + EPSILON + H * l_2 + l_1
         delta = H_nominator / H_denominator
         H *= delta
     return W, H
@@ -108,8 +129,7 @@ def build_data(V, W, H, TRAIN_SIZE=0.80, index=None):
       mask = np.random.rand(samples) < TRAIN_SIZE
     else:
       mask = index
-
-  
+    
     H_init = np.ones((n_components, samples))
     W_init = np.ones((features, n_components))/features
 
@@ -174,7 +194,7 @@ def train_supervised(
         # test performance
         # MSE Loss, ((x - y)**2).sum()
         test_out = deep_nmf(*test_input)
-        test_loss.append((test_cret(test_out, data.h_test.tns)/test_out.shape[0]).item())
+        test_loss.append((test_cret(test_out, data.h_test.tns)).item())
     return deep_nmf, loss_values, test_loss
 
 def train_supervised_w(
@@ -289,6 +309,69 @@ def train_unsupervised(
 
         # test performance
         dnmf_test_cost.append(cost_tns(data.v_test.tns, dnmf_w, test_out,l_1, l_2).item())
+
+    return deep_nmf, dnmf_train_cost, dnmf_test_cost, dnmf_w
+
+def train_unsupervised_kl(
+    data: Alldata,
+    num_layers,
+    network_train_iterations,
+    n_components,
+    verbose=False,
+    lr=0.0005,
+    l_1=0,
+    l_2=0,
+    include_reg = True
+):
+    v_train = data.v_train.tns
+    h_0_train = data.h_0_train.tns
+    features = v_train.shape[1]
+    # build the architicture
+    if include_reg:
+        deep_nmf = UnsuperNet(num_layers, n_components, features, l_1, l_2)
+    else:
+        deep_nmf = UnsuperNet(num_layers, n_components, features, 0, 0)
+    # initialize parameters
+    dnmf_w = data.w_init.tns
+    for w in deep_nmf.parameters():
+        w.data.fill_(0.1)
+
+    optimizerADAM = optim.Adam(deep_nmf.parameters(), lr=lr)
+     # Train the Network
+    inputs = (h_0_train, v_train)
+    test = (data.h_0_test.tns, data.v_test.tns)
+    dnmf_train_cost = []
+    dnmf_test_cost = []
+    for i in range(network_train_iterations):
+        out = deep_nmf(*inputs)
+        test_out = deep_nmf(*test)
+
+        loss = kl_reconstruct_error_tns(v_train, dnmf_w, out, l_1, l_2)
+        
+        if verbose:
+            print(i, loss.item())
+
+        optimizerADAM.zero_grad()
+        loss.backward()
+        optimizerADAM.step()
+
+        # keep weights positive after gradient decent
+        for w in deep_nmf.parameters():
+            w.data = w.clamp(min=0,max=inf)
+        h_out = torch.transpose(out.data, 0, 1)
+        h_out_t = out.data
+
+        # NNLS
+        # https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.nnls.html
+
+        w_arrays = [nnls(out.data.numpy(), data.v_train.mat[f])[0] for f in range(features)]
+        nnls_w = np.stack(w_arrays, axis=-1)
+        dnmf_w = torch.from_numpy(nnls_w).float()
+        
+        dnmf_train_cost.append(loss.item())
+
+        # test performance
+        dnmf_test_cost.append(kl_reconstruct_error_tns(data.v_test.tns, dnmf_w, test_out,l_1, l_2).item())
 
     return deep_nmf, dnmf_train_cost, dnmf_test_cost, dnmf_w
 
@@ -527,3 +610,55 @@ def train_unsupervised_opt2(
         # dnmf_test_cost.append(cost_tns(data.v_test.tns, out[1], test_out[0],l_1, l_2).item())
 
     return deep_nmf, dnmf_train_cost, dnmf_test_cost, dnmf_w
+
+def train_unsupervised_opt1_kl(
+    data: Alldata,
+    num_layers,
+    network_train_iterations,
+    n_components,
+    verbose=False,
+    lr=0.0005,
+    l_1=0,
+    l_2=0,
+    include_reg = True
+):
+    v_train = data.v_train.tns
+    h_0_train = data.h_0_train.tns
+    features = v_train.shape[1]
+    # build the architicture
+    if include_reg:
+        deep_nmf = UnsuperNetOpt1(num_layers, n_components, features, l_1, l_2)
+    else:
+        deep_nmf = UnsuperNetOpt1(num_layers, n_components, features, 0, 0)
+    # initialize parameters
+    for w in deep_nmf.parameters():
+        w.data.fill_(0.1)
+
+    optimizerADAM = optim.Adam(deep_nmf.parameters(), lr=lr)
+     # Train the Network
+    inputs = (h_0_train, v_train)
+    test = (data.h_0_test.tns, data.v_test.tns)
+    dnmf_train_cost = []
+    dnmf_test_cost = []
+    for i in range(network_train_iterations):
+        out = deep_nmf(*inputs)
+        loss = kl_reconstruct_error_tns(v_train, deep_nmf.W, out, l_1, l_2)
+        
+        if verbose:
+            print(i, loss.item())
+
+        optimizerADAM.zero_grad()
+        loss.backward()
+        optimizerADAM.step()
+
+        # keep weights positive after gradient decent
+        for w in deep_nmf.parameters():
+            w.data = w.clamp(min=0,max=inf)
+        
+        dnmf_train_cost.append(loss.item())
+
+        # test performance
+        test_out = deep_nmf(*test)
+        dnmf_test_cost.append(kl_reconstruct_error_tns(data.v_test.tns, deep_nmf.W, test_out,l_1, l_2).item())
+
+    return deep_nmf, dnmf_train_cost, dnmf_test_cost, deep_nmf.W

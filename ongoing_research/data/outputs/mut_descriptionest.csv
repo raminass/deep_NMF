@@ -1,0 +1,15 @@
+Dataset,# Samples,# components
+syn.pancreas_sp.sp,1000,11
+syn.pancreas_sa.sa.96,1000,20
+syn.many.types_sp.sp,2700,21
+syn.many.types_sa.sa.96,2700,39
+syn.3.5.40.rcc.and.ovary_sp.sp,1000,11
+syn.3.5.40.rcc.and.ovary_sa.sa.96,1000,19
+syn.3.5.40.abst_sp.sp,1000,3
+syn.3.5.40.abst_sa.sa.96,1000,3
+syn.2.7a.7b.bladder.and.melanoma_sp.sp,1000,11
+syn.2.7a.7b.bladder.and.melanoma_sa.sa.96,1000,26
+syn.2.7a.7b.abst_sp.sp,1000,3
+syn.2.7a.7b.abst_sa.sa.96,1000,3
+syn.hyper.low.sa.primary_sp.sp,500,2
+syn.hyper.low.sa.primary_sa.sa.96,500,2
